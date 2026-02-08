@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Build / Output
+build/
+dist/
+web-build/
+.expo/web-build/
+coverage/
+
+# Expo / React Native
+.expo/
+.expo-shared/
+.expo-dev-tools/
+.haste_cache/
+metro-cache/
+
+# iOS
+ios/build/
+ios/Pods/
+*.xcworkspace
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+*.iml
+*.keystore
+*.jks
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
