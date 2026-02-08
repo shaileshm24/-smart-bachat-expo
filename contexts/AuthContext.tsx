@@ -36,7 +36,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     } catch (error) {
-      console.error("Auth check failed:", error);
       setUser(null);
       setIsLoading(false);
     }
@@ -54,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } catch (error) {
-      console.error("Logout error:", error);
+      // Silent fail - don't expose logout errors
     } finally {
       setUser(null);
       await storage.removeItem("accessToken");

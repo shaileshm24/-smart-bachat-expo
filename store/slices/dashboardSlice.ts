@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { aiApi, DashboardResponse, DashboardTransaction } from '../../services/api';
+import { aiApi, DashboardResponse, DashboardTransaction, bankApi } from '../../services/api';
 
 // Dashboard state interface
 export interface DashboardState {
@@ -28,7 +28,7 @@ export const fetchDashboard = createAsyncThunk(
   'dashboard/fetch',
   async (isRefresh: boolean = false, { rejectWithValue }) => {
     try {
-      const data = await aiApi.getDashboard();
+      const data = await bankApi.getDashboard();
       return { data, isRefresh };
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to load dashboard data');

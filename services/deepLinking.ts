@@ -95,8 +95,6 @@ class DeepLinkingService {
     try {
       const { path, queryParams } = this.parseUrl(url);
 
-      console.log('Deep link received:', { url, path, queryParams });
-
       // Handle different paths
       if (path) {
         const pathSegments = path.split('/').filter(Boolean);
@@ -105,12 +103,11 @@ class DeepLinkingService {
         const handler = this.handlers.get(mainPath);
         if (handler) {
           handler(queryParams || {});
-        } else {
-          console.warn(`No handler registered for path: ${mainPath}`);
         }
+        // Silent fail if no handler - don't expose internal routing
       }
     } catch (error) {
-      console.error('Error handling deep link:', error);
+      // Silent fail - don't expose deep link errors
     }
   }
 

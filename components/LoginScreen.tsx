@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import {
   Platform,
 } from "react-native";
 import { Lock, Mail, Eye, EyeOff, LogIn } from "lucide-react-native";
-import { authApi, storage } from "../services/api";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { login } from "../store/slices/authSlice";
 
 interface LoginScreenProps {
   onLoginSuccess: (user: any) => void;
@@ -22,55 +23,40 @@ export function LoginScreen({ onLoginSuccess, onNavigateToRegister }: LoginScree
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+
+  const dispatch = useAppDispatch();
+  const { loading, error: reduxError, user } = useAppSelector((state) => state.auth);
+  const [localError, setLocalError] = useState("");
+
+  // Watch for successful login
+  useEffect(() => {
+    if (user) {
+      onLoginSuccess(user);
+    }
+  }, [user]);
 
   const handleLogin = async () => {
-    setError("");
-    
+    setLocalError("");
+
     if (!email || !password) {
-      setError("Please enter both email and password");
+      setLocalError("Please enter both email and password");
       return;
     }
 
-    setLoading(true);
     try {
-      const response = await authApi.login({
+      // Dispatch Redux login action
+      await dispatch(login({
         username: email,
         password: password,
-      });
+      })).unwrap();
 
-      console.log('✅ Login successful!', {
-        userId: response.userId,
-        email: response.email,
-        displayName: response.displayName
-      });
-
-      // Store tokens
-      await storage.setItem("accessToken", response.accessToken);
-      await storage.setItem("refreshToken", response.refreshToken);
-
-      // Store user info
-      await storage.setItem("userId", response.userId);
-      await storage.setItem("userEmail", response.email);
-
-      // Create user object for onLoginSuccess
-      const user = {
-        id: response.userId,
-        email: response.email,
-        firstName: response.displayName.split(' ')[0] || '',
-        lastName: response.displayName.split(' ').slice(1).join(' ') || '',
-        profileId: response.profileId
-      };
-
-      onLoginSuccess(user);
+      // Success is handled by useEffect watching user state
     } catch (err: any) {
-      console.error('❌ Login error:', err);
-      setError(err.message || "Login failed. Please try again.");
-    } finally {
-      setLoading(false);
+      setLocalError(err || "Login failed. Please try again.");
     }
   };
+
+  const displayError = localError || reduxError;
 
   return (
     <KeyboardAvoidingView
@@ -96,9 +82,9 @@ export function LoginScreen({ onLoginSuccess, onNavigateToRegister }: LoginScree
 
         {/* Form */}
         <View style={styles.form}>
-          {error ? (
+          {displayError ? (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>⚠️ {error}</Text>
+              <Text style={styles.errorText}>⚠️ {displayError}</Text>
             </View>
           ) : null}
 

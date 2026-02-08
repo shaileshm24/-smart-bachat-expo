@@ -40,8 +40,6 @@ export function ConsentScreen({ onConsentComplete, onSkip }: ConsentScreenProps)
   // Setup deep link handler for consent callback
   useEffect(() => {
     const handleConsentCallback = (params: DeepLinkParams) => {
-      console.log('Consent callback received:', params);
-
       if (params.status === 'success' || params.status === 'ACTIVE') {
         Alert.alert(
           'Success! 🎉',
@@ -84,13 +82,9 @@ export function ConsentScreen({ onConsentComplete, onSkip }: ConsentScreenProps)
     setLoading(true);
 
     try {
-      console.log('🏦 Initiating bank connection with mobile:', cleanNumber);
-
       const response = await bankApi.initiateConnection({
         mobileNumber: cleanNumber,
       });
-
-      console.log('✅ Bank connection response:', response);
 
       // Store consent ID for tracking
       if (response.consentId) {
@@ -117,7 +111,6 @@ export function ConsentScreen({ onConsentComplete, onSkip }: ConsentScreenProps)
           }, 1000);
 
         } catch (urlError) {
-          console.error('Failed to open consent URL:', urlError);
           setError('Failed to open consent page. Please try again.');
           setLoading(false);
         }
@@ -127,7 +120,6 @@ export function ConsentScreen({ onConsentComplete, onSkip }: ConsentScreenProps)
         setLoading(false);
       }
     } catch (err: any) {
-      console.error('❌ Bank connection error:', err);
       setError(err.message || "Failed to connect bank. Please try again.");
       setLoading(false);
     }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, FlatList, ScrollView, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native";
 import { Zap, Wallet, Target, TrendingUp, TrendingDown, Filter } from "lucide-react-native";
-import { aiApi, DashboardResponse, DashboardTransaction } from "../services/api";
+import { aiApi, DashboardResponse, DashboardTransaction, bankApi } from "../services/api";
 
 // Temporary Icon component to replace react-native-vector-icons
 const Icon = ({ name, size, color }: { name: string; size: number; color: string }) => {
@@ -70,10 +70,9 @@ export function Dashboard() {
         setLoading(true);
       }
       setError(null);
-      const data = await aiApi.getDashboard();
+      const data = await bankApi.getDashboard();
       setDashboardData(data);
     } catch (err: any) {
-      console.error('Failed to fetch dashboard data:', err);
       setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
@@ -470,6 +469,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginHorizontal: 16,
+    paddingTop: 15
   },
   gamificationCard: {
     flex: 1,
@@ -608,6 +608,7 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     backgroundColor: "#fff",
     minHeight: 100,
+
   },
   emptyState: {
     padding: 40,
@@ -643,7 +644,7 @@ const styles = StyleSheet.create({
   },
   transactionRow: {
     flexDirection: "row",
-    padding: 12,
+    padding: 15,
     alignItems: "center",
     borderBottomWidth: 1,
     borderBottomColor: "#eee",

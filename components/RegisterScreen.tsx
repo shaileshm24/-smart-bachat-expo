@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import {
   Platform,
 } from "react-native";
 import { User, Mail, Lock, Phone, Eye, EyeOff, UserPlus } from "lucide-react-native";
-import { authApi, storage } from "../services/api";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { register } from "../store/slices/authSlice";
 
 interface RegisterScreenProps {
   onRegisterSuccess: (user: any) => void;
@@ -29,8 +30,17 @@ export function RegisterScreen({ onRegisterSuccess, onNavigateToLogin }: Registe
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [localError, setLocalError] = useState("");
+
+  const dispatch = useAppDispatch();
+  const { loading, error: reduxError, user } = useAppSelector((state) => state.auth);
+
+  // Watch for successful registration
+  useEffect(() => {
+    if (user) {
+      onRegisterSuccess(user);
+    }
+  }, [user]);
 
   const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -38,23 +48,23 @@ export function RegisterScreen({ onRegisterSuccess, onNavigateToLogin }: Registe
 
   const validateForm = () => {
     if (!formData.email || !formData.password) {
-      setError("Email and password are required");
+      setLocalError("Email and password are required");
       return false;
     }
 
     if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setLocalError("Password must be at least 8 characters");
       return false;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match");
+      setLocalError("Passwords do not match");
       return false;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      setError("Please enter a valid email address");
+      setLocalError("Please enter a valid email address");
       return false;
     }
 
@@ -62,53 +72,29 @@ export function RegisterScreen({ onRegisterSuccess, onNavigateToLogin }: Registe
   };
 
   const handleRegister = async () => {
-    setError("");
+    setLocalError("");
 
     if (!validateForm()) {
       return;
     }
 
-    setLoading(true);
     try {
-      const response = await authApi.register({
+      // Dispatch Redux register action
+      await dispatch(register({
         email: formData.email,
         password: formData.password,
         firstName: formData.firstName || undefined,
         lastName: formData.lastName || undefined,
         mobileNumber: formData.mobileNumber || undefined,
-      });
+      })).unwrap();
 
-      console.log('✅ Registration successful!', {
-        userId: response.userId,
-        email: response.email,
-        displayName: response.displayName
-      });
-
-      // Store tokens
-      await storage.setItem("accessToken", response.accessToken);
-      await storage.setItem("refreshToken", response.refreshToken);
-
-      // Store user info
-      await storage.setItem("userId", response.userId);
-      await storage.setItem("userEmail", response.email);
-
-      // Create user object for onRegisterSuccess
-      const user = {
-        id: response.userId,
-        email: response.email,
-        firstName: formData.firstName || response.displayName.split(' ')[0] || '',
-        lastName: formData.lastName || response.displayName.split(' ').slice(1).join(' ') || '',
-        profileId: response.profileId
-      };
-
-      onRegisterSuccess(user);
+      // Success is handled by useEffect watching user state
     } catch (err: any) {
-      console.error('❌ Registration error:', err);
-      setError(err.message || "Registration failed. Please try again.");
-    } finally {
-      setLoading(false);
+      setLocalError(err || "Registration failed. Please try again.");
     }
   };
+
+  const displayError = localError || reduxError;
 
   return (
     <KeyboardAvoidingView
@@ -134,9 +120,9 @@ export function RegisterScreen({ onRegisterSuccess, onNavigateToLogin }: Registe
 
         {/* Form */}
         <View style={styles.form}>
-          {error ? (
+          {displayError ? (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>⚠️ {error}</Text>
+              <Text style={styles.errorText}>⚠️ {displayError}</Text>
             </View>
           ) : null}
 

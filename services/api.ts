@@ -1,12 +1,12 @@
 // API Configuration and Service Layer
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Environment configuration
 // For production/development builds, use Cloudflare Tunnel URLs
 // For Expo Go, use local network IPs
 const USE_CLOUDFLARE_TUNNEL = false; // Set to true when using EAS build
-const DEBUG_MODE = true; // Set to false in production to hide technical logs
 
 // Cloudflare Tunnel URLs (update these when you start the tunnels)
 const CLOUDFLARE_URLS = {
@@ -24,51 +24,29 @@ const getServiceUrl = (port: number) => {
       8080: CLOUDFLARE_URLS.CORE,
       8089: CLOUDFLARE_URLS.AI,
     };
-    const url = serviceMap[port];
-    console.log(`☁️ Using Cloudflare Tunnel: ${url}`);
-    return url;
+    return serviceMap[port];
   }
 
-  const platform = Platform.OS;
-  const manifest = Constants.expoConfig;
   const debuggerHost = Constants.expoConfig?.hostUri;
-
-  console.log('🔧 Platform Detection:', {
-    os: platform,
-    debuggerHost,
-    hostUri: Constants.expoConfig?.hostUri,
-    isDevice: !Constants.isDevice ? 'Simulator/Emulator' : 'Physical Device'
-  });
 
   // If running on Expo Go (has debuggerHost), use the host IP
   if (debuggerHost) {
-    // Extract IP from debuggerHost (format: "192.168.31.58:8082")
     const hostIP = debuggerHost.split(':')[0];
-    const url = `http://${hostIP}:${port}`;
-    console.log(`📱 Detected Expo Go, using host IP: ${url}`);
-    return url;
+    return `http://${hostIP}:${port}`;
   }
 
   if (Platform.OS === 'android') {
     // Android emulator uses 10.0.2.2 to access host machine's localhost
-    const url = `http://10.0.2.2:${port}`;
-    console.log(`📱 Using Android Emulator URL: ${url}`);
-    return url;
+    return `http://10.0.2.2:${port}`;
   } else if (Platform.OS === 'ios') {
     // iOS simulator - use 127.0.0.1 instead of localhost for better compatibility
-    const url = `http://127.0.0.1:${port}`;
-    console.log(`📱 Using iOS Simulator URL: ${url}`);
-    return url;
+    return `http://127.0.0.1:${port}`;
   } else if (Platform.OS === 'web') {
     // Web browser - use computer's IP
-    const url = `http://192.168.31.58:${port}`;
-    console.log(`🌐 Using Web URL: ${url}`);
-    return url;
+    return `http://192.168.31.58:${port}`;
   } else {
     // Physical device or unknown - use computer's IP address
-    const url = `http://192.168.31.58:${port}`;
-    console.log(`📱 Using Physical Device URL: ${url}`);
-    return url;
+    return `http://192.168.31.58:${port}`;
   }
 };
 
@@ -77,57 +55,86 @@ const UAM_SERVICE_URL = getServiceUrl(8081);      // Authentication service
 const CORE_SERVICE_URL = getServiceUrl(8080);     // Bank/Account Aggregator service
 const AI_SERVICE_URL = getServiceUrl(8089);       // AI Advisory service
 
-console.log('🌐 Service URLs configured:', {
-  UAM: UAM_SERVICE_URL,
-  CORE: CORE_SERVICE_URL,
-  AI: AI_SERVICE_URL
-});
-
 // For backward compatibility
 const API_BASE_URL = UAM_SERVICE_URL;
 
-// Storage abstraction layer - Simple in-memory storage for React Native
-// This works without external dependencies
-class StorageService {
-  private storage: Map<string, string> = new Map();
+// Storage abstraction layer - Uses AsyncStorage for persistence
+// Also supports getting token from Redux store
 
+// Store reference - will be set after store initialization
+let _reduxStore: any = null;
+let _storeInitialized = false;
+
+// Function to set the store reference (called from App.tsx)
+export const setReduxStore = (store: any) => {
+  _reduxStore = store;
+  _storeInitialized = true;
+};
+
+// Helper to get Redux store
+const getStore = () => {
+  if (_storeInitialized) {
+    return _reduxStore;
+  }
+  return null;
+};
+
+class StorageService {
   async setItem(key: string, value: string): Promise<void> {
     try {
-      if (DEBUG_MODE) console.log(`💾 Saving to storage: ${key}`);
-      this.storage.set(key, value);
-      if (DEBUG_MODE) console.log(`✅ Saved successfully: ${key} = ${value.substring(0, 30)}...`);
+      await AsyncStorage.setItem(key, value);
     } catch (error) {
-      console.error(`❌ Storage error:`, error);
+      // Silent fail - don't expose storage errors
       throw error;
     }
   }
 
   async getItem(key: string): Promise<string | null> {
     try {
-      const value = this.storage.get(key) || null;
-      if (DEBUG_MODE) console.log(`📖 Retrieved from storage: ${key} = ${value ? `${value.substring(0, 20)}...` : 'null'}`);
-      return value;
+      // First, try to get from Redux store (for tokens)
+      const reduxStore = getStore();
+      if (reduxStore) {
+        const state = reduxStore.getState();
+
+        if (key === 'accessToken') {
+          const reduxToken = state.auth?.tokens?.accessToken;
+          if (reduxToken) return reduxToken;
+        }
+        if (key === 'refreshToken') {
+          const reduxToken = state.auth?.tokens?.refreshToken;
+          if (reduxToken) return reduxToken;
+        }
+        if (key === 'userId') {
+          const userId = state.auth?.user?.userId;
+          if (userId) return userId;
+        }
+        if (key === 'userEmail') {
+          const email = state.auth?.user?.email;
+          if (email) return email;
+        }
+      }
+
+      // Fallback to AsyncStorage
+      return await AsyncStorage.getItem(key);
     } catch (error) {
-      console.error(`❌ Storage error:`, error);
+      // Silent fail - don't expose storage errors
       return null;
     }
   }
 
   async removeItem(key: string): Promise<void> {
     try {
-      console.log(`🗑️ Removing from storage: ${key}`);
-      this.storage.delete(key);
+      await AsyncStorage.removeItem(key);
     } catch (error) {
-      console.error(`❌ Storage removeItem error for ${key}:`, error);
+      // Silent fail - don't expose storage errors
     }
   }
 
   async clear(): Promise<void> {
     try {
-      console.log('🗑️ Clearing all storage');
-      this.storage.clear();
+      await AsyncStorage.clear();
     } catch (error) {
-      console.error('❌ Storage clear error:', error);
+      // Silent fail - don't expose storage errors
     }
   }
 }
@@ -271,7 +278,6 @@ class ApiClient {
 
   private async getAuthHeaders(): Promise<HeadersInit> {
     const token = await storage.getItem('accessToken');
-    console.log('🔑 Retrieved token:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN FOUND');
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -308,8 +314,7 @@ class ApiClient {
 
       return null;
     } catch (error) {
-      console.error('Token refresh error:', error);
-      // Clear tokens on refresh failure
+      // Clear tokens on refresh failure - silent fail for security
       await storage.removeItem('accessToken');
       await storage.removeItem('refreshToken');
       return null;
@@ -403,11 +408,6 @@ class ApiClient {
   ): Promise<T> {
     try {
       const url = `${this.baseUrl}${endpoint}`;
-      if (DEBUG_MODE) console.log(`🌐 API Request: ${method} ${url}`);
-      if (data && DEBUG_MODE) {
-        console.log('📤 Request Data:', JSON.stringify(data, null, 2));
-      }
-
       const headers = requiresAuth ? await this.getAuthHeaders() : { 'Content-Type': 'application/json' };
 
       const options: RequestInit = {
@@ -419,21 +419,10 @@ class ApiClient {
         options.body = JSON.stringify(data);
       }
 
-      if (DEBUG_MODE) {
-        console.log('🔧 Fetch options:', JSON.stringify({
-          method: options.method,
-          headers: options.headers,
-          hasBody: !!options.body,
-          requiresAuth
-        }, null, 2));
-      }
-
       const response = await fetch(url, options);
-      if (DEBUG_MODE) console.log(`📥 API Response Status: ${response.status} ${response.statusText}`);
 
       // Handle 401 Unauthorized - token expired
       if (response.status === 401 && requiresAuth && !isRetry) {
-        console.log('🔄 Token expired, attempting refresh...');
         if (!this.isRefreshing) {
           this.isRefreshing = true;
           const newToken = await this.refreshToken();
@@ -465,26 +454,13 @@ class ApiClient {
       let result;
       try {
         const responseText = await response.text();
-        if (DEBUG_MODE) console.log('📄 Raw Response:', responseText.substring(0, 200));
         result = JSON.parse(responseText);
-        if (DEBUG_MODE) console.log('✅ API Response:', JSON.stringify(result, null, 2));
       } catch (parseError: any) {
-        if (DEBUG_MODE) console.error('❌ JSON Parse Error:', parseError.message);
         // User-friendly message instead of technical error
         throw new Error('Unable to process server response. Please try again.');
       }
 
       if (!response.ok) {
-        // Log technical details for debugging (only in debug mode)
-        if (DEBUG_MODE) {
-          console.error('❌ API Error Response:', {
-            status: response.status,
-            statusText: response.statusText,
-            endpoint,
-            message: result.message
-          });
-        }
-
         // Return user-friendly error messages based on status code
         const userMessage = this.getUserFriendlyError(response.status, result.message, endpoint);
         throw new Error(userMessage);
@@ -492,17 +468,6 @@ class ApiClient {
 
       return result;
     } catch (error: any) {
-      // Log technical details for debugging (only in debug mode)
-      if (DEBUG_MODE) {
-        console.error('❌ Network Error:', error.message || error);
-        console.error('🔍 Error Details:', {
-          endpoint,
-          method,
-          baseUrl: this.baseUrl,
-          error: error.toString()
-        });
-      }
-
       // If error already has a user-friendly message, use it
       if (error.message && !error.message.includes('JDBC') && !error.message.includes('SQL')) {
         throw error;
@@ -543,17 +508,14 @@ const aiClient = new ApiClient(AI_SERVICE_URL);        // Port 8089 - AI Advisor
 // Auth API - Uses UAM Service (Port 8081)
 export const authApi = {
   async login(credentials: LoginRequest): Promise<AuthResponse> {
-    console.log('🔐 Calling UAM Service (8081) for login');
     return uamClient.post<AuthResponse>('/api/v1/auth/login', credentials);
   },
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    console.log('🔐 Calling UAM Service (8081) for register');
     return uamClient.post<AuthResponse>('/api/v1/auth/register', data);
   },
 
   async logout(): Promise<void> {
-    console.log('🔐 Calling UAM Service (8081) for logout');
     await uamClient.post('/api/v1/auth/logout', {}, true);
     await storage.removeItem('accessToken');
     await storage.removeItem('refreshToken');
@@ -563,17 +525,14 @@ export const authApi = {
 // Bank Connection API - Uses Core Service (Port 8080)
 export const bankApi = {
   async initiateConnection(data: BankConnectionRequest): Promise<BankConnectionResponse> {
-    console.log('🏦 Calling Core Service (8080) for bank connection');
     return coreClient.post<BankConnectionResponse>('/api/v1/bank/connect', data, true);
   },
 
   async getAccounts(): Promise<any> {
-    console.log('🏦 Calling Core Service (8080) for accounts');
     return coreClient.get('/api/v1/bank/accounts', true);
   },
 
-async getDashboard(): Promise<DashboardResponse> {
-    console.log('🤖 Calling AI Service (8080) for dashboard');
+  async getDashboard(): Promise<DashboardResponse> {
     return coreClient.get<DashboardResponse>('/api/v1/dashboard', true);
   },
 };
@@ -581,10 +540,7 @@ async getDashboard(): Promise<DashboardResponse> {
 // AI Advisory API - Uses AI Service (Port 8089)
 export const aiApi = {
   async getAdvice(data: any): Promise<any> {
-    console.log('🤖 Calling AI Service (8089) for advice');
     return aiClient.post('/api/v1/ai/advice', data, true);
   },
-
-
 };
 

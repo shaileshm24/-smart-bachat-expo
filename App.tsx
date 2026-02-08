@@ -29,17 +29,25 @@ import { initializeDeepLinking } from "./services/deepLinking";
 import { Provider as ReduxProvider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { store, persistor } from './store';
+import { useAppSelector } from './store/hooks';
+import { setReduxStore } from './services/api';
+
+// Connect Redux store to API service for token retrieval
+setReduxStore(store);
 
 type TabType = "dashboard" | "expenses" | "goals" | "coach" | "more";
 type AppState = "splash" | "loading" | "login" | "register" | "consent" | "ready" | "error";
 
-export default function App() {
+// Main App Component wrapped with Redux
+function AppContent() {
   const [appState, setAppState] = useState<AppState>("splash");
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [errorType, setErrorType] = useState<
     "network" | "server" | "general"
   >("general");
-  const [user, setUser] = useState<any>(null);
+
+  // Get auth state from Redux
+  const { isAuthenticated, user } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
     // Initialize deep linking
@@ -50,16 +58,19 @@ export default function App() {
     }, 2000);
 
     const loadingTimer = setTimeout(() => {
-      // Check if user is logged in
-      // For now, go to login screen
-      setAppState("login");
+      // Check if user is already logged in from persisted state
+      if (isAuthenticated && user) {
+        setAppState("ready");
+      } else {
+        setAppState("login");
+      }
     }, 3500);
 
     return () => {
       clearTimeout(splashTimer);
       clearTimeout(loadingTimer);
     };
-  }, []);
+  }, [isAuthenticated, user]);
 
   const handleRetry = () => {
     setAppState("loading");
@@ -74,12 +85,12 @@ export default function App() {
   };
 
   const handleLoginSuccess = (userData: any) => {
-    setUser(userData);
+    // Redux already handles storing user data
     setAppState("consent");
   };
 
   const handleRegisterSuccess = (userData: any) => {
-    setUser(userData);
+    // Redux already handles storing user data
     setAppState("consent");
   };
 
@@ -117,12 +128,10 @@ export default function App() {
   ];
 
   return (
-    <ReduxProvider store={store}>
-      <PersistGate loading={<LoadingScreen message="Loading..." />} persistor={persistor}>
-        <SafeAreaProvider>
-          <Provider>
-            <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-              <StatusBar style="light" />
+    <SafeAreaProvider>
+      <Provider>
+        <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+          <StatusBar style="light" />
 	          {appState === "splash" && <SplashScreen />}
 	          {appState === "loading" && (
 	            <LoadingScreen message="Setting up your account" />
@@ -212,8 +221,6 @@ export default function App() {
 	        </SafeAreaView>
 	      </Provider>
 	    </SafeAreaProvider>
-      </PersistGate>
-    </ReduxProvider>
   );
 }
 
@@ -282,3 +289,14 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 });
+
+// Export wrapped with Redux Provider
+export default function App() {
+  return (
+    <ReduxProvider store={store}>
+      <PersistGate loading={<LoadingScreen message="Loading..." />} persistor={persistor}>
+        <AppContent />
+      </PersistGate>
+    </ReduxProvider>
+  );
+}
