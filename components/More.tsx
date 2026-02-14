@@ -22,15 +22,26 @@ import {
   Trophy,
   Flame,
   Code,
+  Sun,
+  Moon,
+  Smartphone,
 } from "lucide-react-native";
+import { useTheme, ThemeMode } from "../contexts/ThemeContext";
 
 export function More() {
   const [showScreensDemo, setShowScreensDemo] = useState(false);
   const [pushNotifications, setPushNotifications] = useState(true);
+  const { colors, isDark, themeMode, setThemeMode } = useTheme();
 
   if (showScreensDemo) {
     return <ScreensDemo onBack={() => setShowScreensDemo(false)} />;
   }
+
+  const themeOptions: { mode: ThemeMode; label: string; icon: typeof Sun }[] = [
+    { mode: 'light', label: 'Light', icon: Sun },
+    { mode: 'dark', label: 'Dark', icon: Moon },
+    { mode: 'system', label: 'System', icon: Smartphone },
+  ];
 
   const badges = [
     { name: "Early Bird", icon: "🌅", earned: true },
@@ -50,58 +61,59 @@ export function More() {
   ];
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Profile Section */}
       <View style={styles.section}>
-        <Card style={styles.card}>
+        <Card style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
           <View style={styles.profileRow}>
-            <View style={styles.profileAvatar}>
+            <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
               <Text style={{ fontSize: 24 }}>👤</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.profileName}>Rahul Sharma</Text>
-              <Text style={styles.profileEmail}>rahul.sharma@email.com</Text>
+              <Text style={[styles.profileName, { color: colors.text }]}>Rahul Sharma</Text>
+              <Text style={[styles.profileEmail, { color: colors.textMuted }]}>rahul.sharma@email.com</Text>
               <View style={styles.profileBadges}>
-                <Badge style={{ backgroundColor: "#f1c40f", color: "#034a67", marginRight: 4 }}>
+                <Badge style={{ backgroundColor: colors.gold, color: colors.secondary, marginRight: 4 }}>
                   <Trophy size={12} /> Level 8
                 </Badge>
-                <Badge style={{ backgroundColor: "#2e7d32", color: "#fff" }}>
+                <Badge style={{ backgroundColor: colors.primary, color: colors.textInverse }}>
                   <Flame size={12} /> 12 Day Streak
                 </Badge>
               </View>
             </View>
           </View>
-          <TouchableOpacity style={styles.editProfileButton}>
-            <Text style={styles.editProfileText}>Edit Profile</Text>
+          <TouchableOpacity style={[styles.editProfileButton, { borderColor: colors.primary }]}>
+            <Text style={[styles.editProfileText, { color: colors.primary }]}>Edit Profile</Text>
           </TouchableOpacity>
         </Card>
       </View>
 
       {/* Profiles */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Manage Profiles</Text>
+        <Text style={[styles.sectionTitle, { color: colors.secondary }]}>Manage Profiles</Text>
         {profiles.map((profile, idx) => (
           <Card
             key={idx}
             style={[
               styles.card,
+              { backgroundColor: colors.cardBackground, borderColor: colors.border },
               profile.active
-                ? { borderColor: "#2e7d32", backgroundColor: "rgba(46,125,50,0.05)" }
+                ? { borderColor: colors.primary, backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : 'rgba(46,125,50,0.05)' }
                 : {},
             ]}
           >
             <View style={styles.profileRow}>
-              <View style={styles.profileIcon}>
+              <View style={[styles.profileIcon, { backgroundColor: colors.backgroundSecondary }]}>
                 <Text style={{ fontSize: 20 }}>{profile.icon}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Text style={styles.profileName}>{profile.name}</Text>
+                  <Text style={[styles.profileName, { color: colors.text }]}>{profile.name}</Text>
                   {profile.active && (
                     <Badge
                       style={{
-                        backgroundColor: "#2e7d32",
-                        color: "#fff",
+                        backgroundColor: colors.primary,
+                        color: colors.textInverse,
                         fontSize: 10,
                         marginLeft: 4,
                       }}
@@ -110,23 +122,23 @@ export function More() {
                     </Badge>
                   )}
                 </View>
-                <Text style={styles.profileBalance}>{profile.balance}</Text>
+                <Text style={[styles.profileBalance, { color: colors.textMuted }]}>{profile.balance}</Text>
               </View>
-              <ChevronRight size={20} color="#9ca3af" />
+              <ChevronRight size={20} color={colors.textMuted} />
             </View>
           </Card>
         ))}
-        <TouchableOpacity style={styles.addProfileButton}>
-          <Text style={styles.addProfileText}>+ Add New Profile</Text>
+        <TouchableOpacity style={[styles.addProfileButton, { borderColor: colors.primary }]}>
+          <Text style={[styles.addProfileText, { color: colors.primary }]}>+ Add New Profile</Text>
         </TouchableOpacity>
       </View>
 
       {/* Achievements */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          <Award size={16} color="#f1c40f" /> Achievements & Badges
+        <Text style={[styles.sectionTitle, { color: colors.secondary }]}>
+          <Award size={16} color={colors.gold} /> Achievements & Badges
         </Text>
-        <Card style={styles.card}>
+        <Card style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
           <View style={styles.badgesGrid}>
             {badges.map((badge, idx) => (
               <View key={idx} style={styles.badgeItem}>
@@ -134,8 +146,8 @@ export function More() {
                   style={[
                     styles.badgeIcon,
                     badge.earned
-                      ? { backgroundColor: "#f1c40f" }
-                      : { backgroundColor: "#e5e7eb", opacity: 0.4 },
+                      ? { backgroundColor: colors.gold }
+                      : { backgroundColor: colors.backgroundSecondary, opacity: 0.4 },
                   ]}
                 >
                   <Text>{badge.icon}</Text>
@@ -143,7 +155,7 @@ export function More() {
                 <Text
                   style={[
                     styles.badgeText,
-                    badge.earned ? { color: "#034a67" } : { color: "#9ca3af" },
+                    badge.earned ? { color: colors.secondary } : { color: colors.textMuted },
                   ]}
                 >
                   {badge.name.split(" ")[0]}
@@ -151,13 +163,13 @@ export function More() {
               </View>
             ))}
           </View>
-          <Separator style={{ marginVertical: 8 }} />
+          <Separator style={{ marginVertical: 8, backgroundColor: colors.border }} />
           <View style={{ alignItems: "center" }}>
-            <Text style={styles.badgeSummary}>
-              <Text style={{ color: "#2e7d32", fontWeight: "bold" }}>5 of 8</Text> badges earned
+            <Text style={[styles.badgeSummary, { color: colors.textMuted }]}>
+              <Text style={{ color: colors.primary, fontWeight: "bold" }}>5 of 8</Text> badges earned
             </Text>
             <TouchableOpacity>
-              <Text style={styles.viewAllAchievements}>View All Achievements</Text>
+              <Text style={[styles.viewAllAchievements, { color: colors.primary }]}>View All Achievements</Text>
             </TouchableOpacity>
           </View>
         </Card>
@@ -165,92 +177,134 @@ export function More() {
 
       {/* Insights & Reports */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Insights & Reports</Text>
-        <Card style={styles.cardRow}>
-          <View style={styles.iconCircle}>
-            <BarChart3 size={20} color="#2e7d32" />
+        <Text style={[styles.sectionTitle, { color: colors.secondary }]}>Insights & Reports</Text>
+        <Card style={[styles.cardRow, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+          <View style={[styles.iconCircle, { backgroundColor: isDark ? 'rgba(76,175,80,0.15)' : 'rgba(46,125,50,0.1)' }]}>
+            <BarChart3 size={20} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardRowTitle}>Monthly Report</Text>
-            <Text style={styles.cardRowSubtitle}>Detailed spending analysis</Text>
+            <Text style={[styles.cardRowTitle, { color: colors.text }]}>Monthly Report</Text>
+            <Text style={[styles.cardRowSubtitle, { color: colors.textMuted }]}>Detailed spending analysis</Text>
           </View>
-          <ChevronRight size={20} color="#9ca3af" />
+          <ChevronRight size={20} color={colors.textMuted} />
         </Card>
 
-        <Card style={styles.cardRow}>
-          <View style={styles.iconCircle}>
-            <FileText size={20} color="#034a67" />
+        <Card style={[styles.cardRow, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+          <View style={[styles.iconCircle, { backgroundColor: isDark ? 'rgba(91,163,192,0.15)' : 'rgba(3,74,103,0.1)' }]}>
+            <FileText size={20} color={colors.secondary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardRowTitle}>Export Statements</Text>
-            <Text style={styles.cardRowSubtitle}>Download PDF reports</Text>
+            <Text style={[styles.cardRowTitle, { color: colors.text }]}>Export Statements</Text>
+            <Text style={[styles.cardRowSubtitle, { color: colors.textMuted }]}>Download PDF reports</Text>
           </View>
-          <ChevronRight size={20} color="#9ca3af" />
+          <ChevronRight size={20} color={colors.textMuted} />
         </Card>
       </View>
 
       {/* Settings */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Settings</Text>
-        <Card style={{ borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12 }}>
+        <Text style={[styles.sectionTitle, { color: colors.secondary }]}>Settings</Text>
+        <Card style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.cardBackground }}>
+          {/* Theme Toggle */}
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Bell size={20} color="#034a67" />
+              {isDark ? <Moon size={20} color={colors.primary} /> : <Sun size={20} color={colors.primary} />}
               <View style={{ marginLeft: 8 }}>
-                <Text style={styles.settingTitle}>Push Notifications</Text>
-                <Text style={styles.settingSubtitle}>Get alerts & reminders</Text>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>Appearance</Text>
+                <Text style={[styles.settingSubtitle, { color: colors.textMuted }]}>
+                  {themeMode === 'system' ? 'Following system' : themeMode === 'dark' ? 'Dark mode' : 'Light mode'}
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.themeToggleContainer}>
+            {themeOptions.map((option) => {
+              const Icon = option.icon;
+              const isSelected = themeMode === option.mode;
+              return (
+                <TouchableOpacity
+                  key={option.mode}
+                  style={[
+                    styles.themeOption,
+                    {
+                      backgroundColor: isSelected ? colors.primary : colors.surface,
+                      borderColor: isSelected ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setThemeMode(option.mode)}
+                >
+                  <Icon size={16} color={isSelected ? colors.textInverse : colors.textSecondary} />
+                  <Text style={[
+                    styles.themeOptionText,
+                    { color: isSelected ? colors.textInverse : colors.textSecondary }
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Separator style={{ backgroundColor: colors.border }} />
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Bell size={20} color={colors.secondary} />
+              <View style={{ marginLeft: 8 }}>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>Push Notifications</Text>
+                <Text style={[styles.settingSubtitle, { color: colors.textMuted }]}>Get alerts & reminders</Text>
               </View>
             </View>
             <RNSwitch
               value={pushNotifications}
               onValueChange={setPushNotifications}
-              trackColor={{ false: "#ccc", true: "#2e7d32" }}
+              trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor="#fff"
             />
           </View>
 
           <TouchableOpacity style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Shield size={20} color="#034a67" />
+              <Shield size={20} color={colors.secondary} />
               <View style={{ marginLeft: 8 }}>
-                <Text style={styles.settingTitle}>Data Privacy</Text>
-                <Text style={styles.settingSubtitle}>Offline processing enabled</Text>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>Data Privacy</Text>
+                <Text style={[styles.settingSubtitle, { color: colors.textMuted }]}>Offline processing enabled</Text>
               </View>
             </View>
-            <ChevronRight size={20} color="#9ca3af" />
+            <ChevronRight size={20} color={colors.textMuted} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Settings size={20} color="#034a67" />
+              <Settings size={20} color={colors.secondary} />
               <View style={{ marginLeft: 8 }}>
-                <Text style={styles.settingTitle}>App Settings</Text>
-                <Text style={styles.settingSubtitle}>Customize your experience</Text>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>App Settings</Text>
+                <Text style={[styles.settingSubtitle, { color: colors.textMuted }]}>Customize your experience</Text>
               </View>
             </View>
-            <ChevronRight size={20} color="#9ca3af" />
+            <ChevronRight size={20} color={colors.textMuted} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.settingRow} onPress={() => setShowScreensDemo(true)}>
             <View style={styles.settingInfo}>
-              <Code size={20} color="#f1c40f" />
+              <Code size={20} color={colors.gold} />
               <View style={{ marginLeft: 8 }}>
-                <Text style={styles.settingTitle}>View Screen Previews</Text>
-                <Text style={styles.settingSubtitle}>Test loading, error & success screens</Text>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>View Screen Previews</Text>
+                <Text style={[styles.settingSubtitle, { color: colors.textMuted }]}>Test loading, error & success screens</Text>
               </View>
             </View>
-            <ChevronRight size={20} color="#9ca3af" />
+            <ChevronRight size={20} color={colors.textMuted} />
           </TouchableOpacity>
         </Card>
       </View>
 
       {/* Privacy Info */}
       <View style={styles.section}>
-        <Card style={[styles.cardRow, { backgroundColor: "rgba(46,125,50,0.05)", borderColor: "rgba(46,125,50,0.3)" }]}>
-          <Shield size={20} color="#2e7d32" />
+        <Card style={[styles.cardRow, { backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : 'rgba(46,125,50,0.05)', borderColor: isDark ? 'rgba(76,175,80,0.3)' : 'rgba(46,125,50,0.3)' }]}>
+          <Shield size={20} color={colors.primary} />
           <View style={{ marginLeft: 8, flex: 1 }}>
-            <Text style={{ color: "#034a67", fontSize: 14, marginBottom: 2 }}>Your Data is Safe</Text>
-            <Text style={{ color: "#6b7280", fontSize: 12 }}>
+            <Text style={{ color: colors.text, fontSize: 14, marginBottom: 2 }}>Your Data is Safe</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
               All your financial data is processed locally on your device. We never store your bank statements or transaction details on our servers.
             </Text>
           </View>
@@ -259,15 +313,15 @@ export function More() {
 
       {/* App Info */}
       <View style={{ padding: 16, alignItems: "center" }}>
-        <Text style={{ fontSize: 10, color: "#6b7280" }}>SmartBachat v1.0.0</Text>
-        <Text style={{ fontSize: 10, color: "#6b7280" }}>Made with ❤️ for better savings</Text>
+        <Text style={{ fontSize: 10, color: colors.textMuted }}>SmartBachat v1.0.0</Text>
+        <Text style={{ fontSize: 10, color: colors.textMuted }}>Made with ❤️ for better savings</Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
           <TouchableOpacity>
-            <Text style={{ color: "#2e7d32", textDecorationLine: "underline", fontSize: 10 }}>Privacy Policy</Text>
+            <Text style={{ color: colors.primary, textDecorationLine: "underline", fontSize: 10 }}>Privacy Policy</Text>
           </TouchableOpacity>
-          <Text style={{ marginHorizontal: 4, fontSize: 10 }}>•</Text>
+          <Text style={{ marginHorizontal: 4, fontSize: 10, color: colors.textMuted }}>•</Text>
           <TouchableOpacity>
-            <Text style={{ color: "#2e7d32", textDecorationLine: "underline", fontSize: 10 }}>Terms of Service</Text>
+            <Text style={{ color: colors.primary, textDecorationLine: "underline", fontSize: 10 }}>Terms of Service</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -328,4 +382,26 @@ const styles = StyleSheet.create({
   settingInfo: { flexDirection: "row", alignItems: "center" },
   settingTitle: { fontSize: 14, color: "#034a67" },
   settingSubtitle: { fontSize: 10, color: "#6b7280" },
+  themeToggleContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+  },
+  themeOptionText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
 });

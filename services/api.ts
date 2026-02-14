@@ -79,6 +79,16 @@ const getStore = () => {
   return null;
 };
 
+// Force logout - dispatches forceLogout action to Redux store
+const dispatchForceLogout = () => {
+  const store = getStore();
+  if (store) {
+    // Import dynamically to avoid circular dependency
+    const { forceLogout } = require('../store/slices/authSlice');
+    store.dispatch(forceLogout());
+  }
+};
+
 class StorageService {
   async setItem(key: string, value: string): Promise<void> {
     try {
@@ -254,6 +264,37 @@ export interface DashboardTransaction {
   subCategory: string | null;
 }
 
+	// Alias for reuse in other screens (e.g., Expenses)
+	export type Transaction = DashboardTransaction;
+
+// Transaction API types
+export interface TransactionFilters {
+  page?: number;
+  size?: number;
+  category?: string;
+  startDate?: string;  // Format: YYYY-MM-DD
+  endDate?: string;    // Format: YYYY-MM-DD
+  direction?: 'CREDIT' | 'DEBIT';
+  search?: string;
+}
+
+export interface TransactionSummary {
+  totalIncome: number;
+  totalExpenses: number;
+  netSavings: number;
+  creditCount: number;
+  debitCount: number;
+}
+
+export interface TransactionResponse {
+  transactions: Transaction[];
+  summary: TransactionSummary;
+  totalCount: number;
+  page: number;
+  size: number;
+  totalPages: number;
+}
+
 export interface DashboardResponse {
   totalSavings: number;
   nudge: DashboardNudge;
@@ -284,7 +325,7 @@ class ApiClient {
     };
   }
 
-  // Token refresh logic
+  // Token refresh logic - always uses UAM service for auth
   private async refreshToken(): Promise<string | null> {
     try {
       const refreshToken = await storage.getItem('refreshToken');
@@ -292,7 +333,8 @@ class ApiClient {
         throw new Error('No refresh token available');
       }
 
-      const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+      // Always use UAM service URL for token refresh (auth is on port 8081)
+      const response = await fetch(`${UAM_SERVICE_URL}/api/v1/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -314,9 +356,11 @@ class ApiClient {
 
       return null;
     } catch (error) {
-      // Clear tokens on refresh failure - silent fail for security
+      // Clear tokens on refresh failure and force logout
       await storage.removeItem('accessToken');
       await storage.removeItem('refreshToken');
+      // Dispatch force logout to update Redux state and redirect to login
+      dispatchForceLogout();
       return null;
     }
   }
@@ -419,10 +463,13 @@ class ApiClient {
         options.body = JSON.stringify(data);
       }
 
-      const response = await fetch(url, options);
+	      const response = await fetch(url, options);
 
-      // Handle 401 Unauthorized - token expired
-      if (response.status === 401 && requiresAuth && !isRetry) {
+	      const isUnauthorized = response.status === 401 || response.status === 403;
+
+	      // Handle 401 Unauthorized or 403 Forbidden - token expired/invalid
+	      // Some backends return 403 for expired JWT instead of 401
+	      if (isUnauthorized && requiresAuth && !isRetry) {
         if (!this.isRefreshing) {
           this.isRefreshing = true;
           const newToken = await this.refreshToken();
@@ -433,23 +480,35 @@ class ApiClient {
             // Retry the original request with new token
             return this.makeRequest<T>(method, endpoint, data, requiresAuth, true);
           } else {
-            // Refresh failed, user needs to login again
-            throw new Error('Session expired. Please login again.');
+            // Refresh failed - forceLogout already dispatched in refreshToken()
+            // Don't throw error, just return a rejected promise that won't show error UI
+            // The app will redirect to login via the Redux state change
+            return Promise.reject({ sessionExpired: true, message: 'Session expired. Please login again.' });
           }
-        } else {
-          // Wait for ongoing refresh to complete
-          return new Promise((resolve, reject) => {
-            this.subscribeTokenRefresh(async (token: string) => {
-              try {
-                const result = await this.makeRequest<T>(method, endpoint, data, requiresAuth, true);
-                resolve(result);
-              } catch (error) {
-                reject(error);
-              }
-            });
-          });
-        }
-      }
+	        } else {
+	          // Wait for ongoing refresh to complete
+	          return new Promise((resolve, reject) => {
+	            this.subscribeTokenRefresh(async (token: string) => {
+	              try {
+	                const result = await this.makeRequest<T>(method, endpoint, data, requiresAuth, true);
+	                resolve(result);
+	              } catch (error) {
+	                reject(error);
+	              }
+	            });
+	          });
+	        }
+	      }
+
+	      // If we already retried with a refreshed token and still get 401/403,
+	      // treat this as a hard session expiry and force logout instead of surfacing
+	      // a "session expired" error on screens like Dashboard.
+	      if (isUnauthorized && requiresAuth && isRetry) {
+	        await storage.removeItem('accessToken');
+	        await storage.removeItem('refreshToken');
+	        dispatchForceLogout();
+	        return Promise.reject({ sessionExpired: true, message: 'Session expired. Please login again.' });
+	      }
 
       let result;
       try {
@@ -468,6 +527,11 @@ class ApiClient {
 
       return result;
     } catch (error: any) {
+      // If session expired, preserve the sessionExpired flag for the caller
+      if (error?.sessionExpired) {
+        throw error;
+      }
+
       // If error already has a user-friendly message, use it
       if (error.message && !error.message.includes('JDBC') && !error.message.includes('SQL')) {
         throw error;
@@ -530,6 +594,41 @@ export const bankApi = {
 
   async getAccounts(): Promise<any> {
     return coreClient.get('/api/v1/bank/accounts', true);
+  },
+
+  /**
+   * Fetch paginated transactions with optional filters.
+   * Uses Bearer token authentication (userId extracted from JWT on backend).
+   *
+   * @param filters - Optional filters for pagination, category, date range, direction, search
+   * @returns TransactionResponse with transactions array, summary, and pagination info
+   */
+  async getTransactions(filters?: TransactionFilters): Promise<TransactionResponse> {
+    const params = new URLSearchParams();
+
+    // Add pagination params (with defaults)
+    params.append('page', String(filters?.page ?? 0));
+    params.append('size', String(filters?.size ?? 50));
+
+    // Add optional filter params
+    if (filters?.category) {
+      params.append('category', filters.category);
+    }
+    if (filters?.startDate) {
+      params.append('startDate', filters.startDate);
+    }
+    if (filters?.endDate) {
+      params.append('endDate', filters.endDate);
+    }
+    if (filters?.direction) {
+      params.append('direction', filters.direction);
+    }
+    if (filters?.search) {
+      params.append('search', filters.search);
+    }
+
+    const endpoint = `/api/transactions?${params.toString()}`;
+    return coreClient.get<TransactionResponse>(endpoint, true);
   },
 
   async getDashboard(): Promise<DashboardResponse> {

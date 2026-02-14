@@ -14,6 +14,8 @@ import {ErrorScreen} from "./components/ErrorScreen";
 import {LoginScreen} from "./components/LoginScreen";
 import {RegisterScreen} from "./components/RegisterScreen";
 import {ConsentScreen} from "./components/ConsentScreen";
+import {Logo} from "./components/Logo";
+import CategoryTransactions from "./components/CategoryTransactions";
 
 import {
   Home,
@@ -21,7 +23,9 @@ import {
   Target,
   MessageCircle,
   Menu,
+  ArrowLeft,
 } from "lucide-react-native";
+import { getCategoryConfig } from "./utils/categoryIcons";
 import { Provider } from "react-native-paper";
 import { initializeDeepLinking } from "./services/deepLinking";
 
@@ -32,16 +36,28 @@ import { store, persistor } from './store';
 import { useAppSelector } from './store/hooks';
 import { setReduxStore } from './services/api';
 
+// Theme imports
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+
 // Connect Redux store to API service for token retrieval
 setReduxStore(store);
 
 type TabType = "dashboard" | "expenses" | "goals" | "coach" | "more";
 type AppState = "splash" | "loading" | "login" | "register" | "consent" | "ready" | "error";
 
+// Screen types for sub-navigation within tabs
+type ScreenType = "tab" | "categoryDetails";
+
+interface ScreenParams {
+  category?: string;
+}
+
 // Main App Component wrapped with Redux
 function AppContent() {
   const [appState, setAppState] = useState<AppState>("splash");
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
+  const [currentScreen, setCurrentScreen] = useState<ScreenType>("tab");
+  const [screenParams, setScreenParams] = useState<ScreenParams>({});
   const [errorType, setErrorType] = useState<
     "network" | "server" | "general"
   >("general");
@@ -49,6 +65,10 @@ function AppContent() {
   // Get auth state from Redux
   const { isAuthenticated, user } = useAppSelector((state) => state.auth);
 
+  // Get theme colors
+  const { colors, isDark } = useTheme();
+
+  // Handle initial app load
   useEffect(() => {
     // Initialize deep linking
     initializeDeepLinking();
@@ -70,7 +90,18 @@ function AppContent() {
       clearTimeout(splashTimer);
       clearTimeout(loadingTimer);
     };
-  }, [isAuthenticated, user]);
+  }, []);
+
+  // Handle auth state changes (e.g., token expiration, force logout)
+  useEffect(() => {
+    // Only redirect to login if we're in "ready" state and auth becomes invalid
+    // This handles the case when JWT expires and refresh fails
+    console.log("state", isAuthenticated, appState);
+    
+    if (appState === "ready" && !isAuthenticated) {
+      setAppState("login");
+    }
+  }, [isAuthenticated, appState]);
 
   const handleRetry = () => {
     setAppState("loading");
@@ -102,12 +133,34 @@ function AppContent() {
     setAppState("ready");
   };
 
+  // Navigation handlers for sub-screens
+  const handleNavigateToCategoryDetails = (category: string) => {
+    setCurrentScreen("categoryDetails");
+    setScreenParams({ category });
+  };
+
+  const handleNavigateBack = () => {
+    setCurrentScreen("tab");
+    setScreenParams({});
+  };
+
   const renderContent = () => {
+    // If on a sub-screen, render that screen
+    if (currentScreen === "categoryDetails" && screenParams.category) {
+      return (
+        <CategoryTransactions
+          category={screenParams.category}
+          onBack={handleNavigateBack}
+        />
+      );
+    }
+
+    // Otherwise render the active tab
     switch (activeTab) {
       case "dashboard":
         return <Dashboard />;
       case "expenses":
-        return <Expenses />;
+        return <Expenses onNavigateToCategoryDetails={handleNavigateToCategoryDetails} />;
       case "goals":
         return <Goals />;
       case "coach":
@@ -130,97 +183,122 @@ function AppContent() {
   return (
     <SafeAreaProvider>
       <Provider>
-        <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-          <StatusBar style="light" />
-	          {appState === "splash" && <SplashScreen />}
-	          {appState === "loading" && (
-	            <LoadingScreen message="Setting up your account" />
-	          )}
-	          {appState === "login" && (
-	            <LoginScreen
-	              onLoginSuccess={handleLoginSuccess}
-	              onNavigateToRegister={() => setAppState("register")}
-	            />
-	          )}
-	          {appState === "register" && (
-	            <RegisterScreen
-	              onRegisterSuccess={handleRegisterSuccess}
-	              onNavigateToLogin={() => setAppState("login")}
-	            />
-	          )}
-	          {appState === "consent" && (
-	            <ConsentScreen
-	              onConsentComplete={handleConsentComplete}
-	              onSkip={handleConsentSkip}
-	            />
-	          )}
-	          {appState === "error" && (
-	            <ErrorScreen
-	              type={errorType}
-	              onRetry={handleRetry}
-	              onGoHome={handleGoHome}
-	            />
-	          )}
-	          {appState === "ready" && (
-	            <>
-	              {/* Header */}
-	              <View style={styles.header}>
-	                <View style={styles.headerLeft}>
-	                  <View style={styles.logoCircle}>
-	                    <View style={styles.logoDot} />
-	                  </View>
-	                  <View>
-	                    <Text style={styles.appName}>SmartBachat</Text>
-	                    <Text style={styles.tagline}>
-	                      Your Trusted Savings Partner
-	                    </Text>
-	                  </View>
-	                </View>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
+          <StatusBar style={isDark ? 'light' : 'dark'} />
+          {appState === "splash" && <SplashScreen />}
+          {appState === "loading" && (
+            <LoadingScreen message="Setting up your account" />
+          )}
+          {appState === "login" && (
+            <LoginScreen
+              onLoginSuccess={handleLoginSuccess}
+              onNavigateToRegister={() => setAppState("register")}
+            />
+          )}
+          {appState === "register" && (
+            <RegisterScreen
+              onRegisterSuccess={handleRegisterSuccess}
+              onNavigateToLogin={() => setAppState("login")}
+            />
+          )}
+          {appState === "consent" && (
+            <ConsentScreen
+              onConsentComplete={handleConsentComplete}
+              onSkip={handleConsentSkip}
+            />
+          )}
+          {appState === "error" && (
+            <ErrorScreen
+              type={errorType}
+              onRetry={handleRetry}
+              onGoHome={handleGoHome}
+            />
+          )}
+          {appState === "ready" && (
+            <>
+              {/* Dynamic Header */}
+              {currentScreen === "tab" ? (
+                // App header for tab screens
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                  <View style={styles.headerLeft}>
+                    <Logo size={44} variant={isDark ? 'dark' : 'default'} />
+                    <View>
+                      <Text style={[styles.appName, { color: colors.headerText }]}>Smart Bachat</Text>
+                      <Text style={[styles.tagline, { color: isDark ? colors.textMuted : 'rgba(255,255,255,0.8)' }]}>
+                        Your Trusted Savings Partner
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                // Category header for detail screens
+                (() => {
+                  const categoryConfig = screenParams.category
+                    ? getCategoryConfig(screenParams.category)
+                    : null;
+                  const CategoryIcon = categoryConfig?.icon;
 
-	                <View style={styles.headerRight}>
-	                  <Text style={styles.smallText}>Total Savings</Text>
-	                  <Text style={styles.savingsText}>₹1,35,000</Text>
-	                </View>
-	              </View>
+                  return (
+                    <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                      <TouchableOpacity onPress={handleNavigateBack} style={styles.backButton}>
+                        <ArrowLeft size={24} color={colors.headerText} />
+                      </TouchableOpacity>
+                      {categoryConfig && CategoryIcon && (
+                        <View style={[styles.categoryIconCircle, { backgroundColor: categoryConfig.bgColor }]}>
+                          <CategoryIcon size={22} color={categoryConfig.color} />
+                        </View>
+                      )}
+                      <View style={styles.headerContent}>
+                        <Text style={[styles.headerTitle, { color: colors.headerText }]}>
+                          {screenParams.category}
+                        </Text>
+                        <Text style={[styles.headerSubtitle, { color: isDark ? colors.textMuted : 'rgba(255,255,255,0.8)' }]}>
+                          Category Transactions
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()
+              )}
 
-	              {/* Content */}
-	              <View style={styles.mainContent}>{renderContent()}</View>
+              {/* Content */}
+              <View style={styles.mainContent}>{renderContent()}</View>
 
-	              {/* Bottom Tab Bar */}
-	              <View style={styles.bottomNav}>
-	                {tabs.map((tab) => {
-	                  const Icon = tab.icon;
-	                  const isActive = activeTab === tab.id;
+              {/* Bottom Tab Bar */}
+              <View style={[styles.bottomNav, { backgroundColor: colors.tabBarBackground, borderColor: colors.border }]}>
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
 
-	                  return (
-	                    <TouchableOpacity
-	                      key={tab.id}
-	                      onPress={() => setActiveTab(tab.id as TabType)}
-	                      style={styles.tabButton}
-	                    >
-	                      <Icon
-	                        size={24}
-	                        strokeWidth={isActive ? 2.5 : 1.6}
-	                        color={isActive ? "#2e7d32" : "#777"}
-	                      />
-	                      <Text
-	                        style={[
-	                          styles.tabLabel,
-	                          { color: isActive ? "#2e7d32" : "#777" },
-	                        ]}
-	                      >
-	                        {tab.label}
-	                      </Text>
-	                      {isActive && <View style={styles.activeDot} />}
-	                    </TouchableOpacity>
-	                  );
-	                })}
-	              </View>
-	            </>
-	          )}
-	        </SafeAreaView>
-	      </Provider>
-	    </SafeAreaProvider>
+                  return (
+                    <TouchableOpacity
+                      key={tab.id}
+                      onPress={() => setActiveTab(tab.id as TabType)}
+                      style={styles.tabButton}
+                    >
+                      <Icon
+                        size={24}
+                        strokeWidth={isActive ? 2.5 : 1.6}
+                        color={isActive ? colors.tabBarActive : colors.tabBarInactive}
+                      />
+                      <Text
+                        style={[
+                          styles.tabLabel,
+                          { color: isActive ? colors.tabBarActive : colors.tabBarInactive },
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                      {isActive && <View style={[styles.activeDot, { backgroundColor: colors.tabBarActive }]} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </SafeAreaView>
+      </Provider>
+    </SafeAreaProvider>
   );
 }
 
@@ -237,20 +315,33 @@ const styles = StyleSheet.create({
 
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
 
-  logoCircle: {
+  backButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+
+  headerContent: {
+    flex: 1,
+  },
+
+  headerTitle: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
+  headerSubtitle: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 12,
+  },
+
+  categoryIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
     alignItems: "center",
-  },
-
-  logoDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#f1c40f",
+    justifyContent: "center",
+    marginRight: 12,
   },
 
   appName: { color: "white", fontSize: 18, fontWeight: "600" },
@@ -290,12 +381,14 @@ const styles = StyleSheet.create({
   },
 });
 
-// Export wrapped with Redux Provider
+// Export wrapped with Redux Provider and ThemeProvider
 export default function App() {
   return (
     <ReduxProvider store={store}>
       <PersistGate loading={<LoadingScreen message="Loading..." />} persistor={persistor}>
-        <AppContent />
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
       </PersistGate>
     </ReduxProvider>
   );

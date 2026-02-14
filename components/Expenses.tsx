@@ -1,53 +1,198 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useMemo, useState, useEffect, useRef } from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl } from "react-native";
 import { Card, Button, Badge } from "react-native-paper";
-import { TrendingDown } from "lucide-react-native";
+import { TrendingDown, TrendingUp, ChevronRight } from "lucide-react-native";
+import { bankApi, Transaction } from "../services/api";
+import { useTheme } from "../contexts/ThemeContext";
+import { getCategoryConfig } from "../utils/categoryIcons";
 
-export function Expenses() {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+// Helper to convert paisa to rupees
+const paisaToRupees = (paisa: number): number => paisa / 100;
 
-  const categories = [
-    { name: "Food & Dining", spent: 8420, budget: 10000, icon: "🍔", color: "#2e7d32" },
-    { name: "Shopping", spent: 12350, budget: 15000, icon: "🛒", color: "#034a67" },
-    { name: "Transport", spent: 3200, budget: 5000, icon: "🚗", color: "#f1c40f" },
-    { name: "Bills & Utilities", spent: 5600, budget: 6000, icon: "📱", color: "#e74c3c" },
-    { name: "Entertainment", spent: 2800, budget: 4000, icon: "🎬", color: "#9b59b6" },
-    { name: "Health", spent: 1500, budget: 3000, icon: "⚕️", color: "#16a085" },
-  ];
+// Format rupees with Indian locale
+const formatRupees = (paisa: number): string => {
+  const rupees = paisaToRupees(paisa);
+  return rupees.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
-  const transactions = [
-    { name: "Swiggy", category: "Food & Dining", amount: 450, time: "Today, 2:15 PM", method: "UPI" },
-    { name: "Zomato", category: "Food & Dining", amount: 420, time: "Today, 1:30 PM", method: "UPI" },
-    { name: "Amazon", category: "Shopping", amount: 2499, time: "Today, 10:15 AM", method: "Card" },
-    { name: "Metro Card Recharge", category: "Transport", amount: 500, time: "Yesterday, 9:00 AM", method: "UPI" },
-    { name: "Uber", category: "Transport", amount: 180, time: "Yesterday, 8:45 PM", method: "UPI" },
-    { name: "Netflix", category: "Entertainment", amount: 649, time: "Nov 15, 2025", method: "Card" },
-    { name: "Electricity Bill", category: "Bills & Utilities", amount: 1850, time: "Nov 14, 2025", method: "UPI" },
-    { name: "Myntra", category: "Shopping", amount: 3499, time: "Nov 13, 2025", method: "Card" },
-  ];
+// Module-level cache to persist data across tab switches
+let cachedTransactions: Transaction[] = [];
+let cachedPageSize = 20;
 
-  const filteredTransactions = selectedCategory
-    ? transactions.filter((t) => t.category === selectedCategory)
-    : transactions;
+// Page size options
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
+interface ExpensesProps {
+  onNavigateToCategoryDetails?: (category: string) => void;
+}
+
+export function Expenses({ onNavigateToCategoryDetails }: ExpensesProps) {
+  const { colors, isDark } = useTheme();
+  const [transactions, setTransactions] = useState<Transaction[]>(cachedTransactions);
+  const [loading, setLoading] = useState<boolean>(cachedTransactions.length === 0);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(0);
+  const [pageSize, setPageSize] = useState<number>(cachedPageSize);
+  const hasFetched = useRef(false);
+
+  useEffect(() => {
+    // Only fetch if we don't have cached data
+    if (cachedTransactions.length === 0 && !hasFetched.current) {
+      hasFetched.current = true;
+      fetchAllTransactions();
+    }
+  }, []);
+
+  const fetchAllTransactions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch a large batch of transactions using new API
+      const response = await bankApi.getTransactions({ page: 0, size: 1000 });
+      setTransactions(response.transactions);
+      cachedTransactions = response.transactions;
+    } catch (err: any) {
+      if (err?.sessionExpired) {
+        return;
+      }
+      setError(err?.message || "Failed to load expenses");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    hasFetched.current = false;
+    setCurrentPage(0);
+    fetchAllTransactions();
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    cachedPageSize = newSize;
+    setCurrentPage(0); // Reset to first page when changing page size
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  // Derive categories + totals from real transactions (convert paisa to rupees)
+  const categories = useMemo(() => {
+    const map = new Map<string, { spent: number; count: number }>();
+    transactions.forEach((t) => {
+      const key = t.category || "OTHER";
+      const current = map.get(key) || { spent: 0, count: 0 };
+      const delta = t.direction === "DEBIT" ? paisaToRupees(t.amount) : 0;
+      map.set(key, { spent: current.spent + delta, count: current.count + 1 });
+    });
+    return Array.from(map.entries()).map(([name, value]) => ({
+      name,
+      spent: value.spent,
+      count: value.count,
+    }));
+  }, [transactions]);
+
+  // Calculate pagination
+  const totalTransactions = transactions.length;
+  const totalPages = Math.ceil(totalTransactions / pageSize);
+  const startIndex = currentPage * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalTransactions);
+
+  // Get current page's transactions
+  const paginatedTransactions = useMemo(
+    () => transactions.slice(startIndex, endIndex),
+    [transactions, startIndex, endIndex]
+  );
+
+  const totalSpent = useMemo(
+    () =>
+      transactions
+        .filter((t) => t.direction === "DEBIT")
+        .reduce((sum, t) => sum + paisaToRupees(t.amount), 0),
+    [transactions]
+  );
+
+  // Generate page numbers to display
+  const getPageNumbers = (): (number | string)[] => {
+    const pages: (number | string)[] = [];
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 0; i < totalPages; i++) pages.push(i);
+    } else {
+      // Always show first page
+      pages.push(0);
+
+      if (currentPage > 2) pages.push('...');
+
+      // Show pages around current
+      const start = Math.max(1, currentPage - 1);
+      const end = Math.min(totalPages - 2, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+
+      if (currentPage < totalPages - 3) pages.push('...');
+
+      // Always show last page
+      if (totalPages > 1) pages.push(totalPages - 1);
+    }
+    return pages;
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.secondary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading expenses...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorText, { color: colors.error }]}>⚠️ {error}</Text>
+        <Button mode="contained" onPress={() => { setLoading(true); setError(null); }}>
+          Retry
+        </Button>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={{ paddingBottom: 20 }}>
-      {/* Monthly Overview */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-        <Card style={{ padding: 16 }}>
+    <ScrollView
+      style={{ paddingBottom: 20, backgroundColor: colors.background }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          colors={[colors.secondary]}
+          tintColor={colors.secondary}
+        />
+      }
+    >
+      {/* Monthly Overview with Refresh Button */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 16, paddingTop: 15 }}>
+        <Card style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder }]}>
           <View style={styles.rowBetween}>
-            <Text style={styles.monthTitle}>November 2025</Text>
-            <Badge style={styles.redBadge}>-₹34,370</Badge>
+            <Text style={[styles.monthTitle, { color: colors.text }]}>This Month</Text>
+            <View style={styles.headerActions}>
+              {/* <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton}>
+                <RefreshCw size={18} color={colors.secondary} />
+              </TouchableOpacity> */}
+              <Badge style={[styles.redBadge, { backgroundColor: isDark ? 'rgba(248,113,113,0.25)' : '#fee2e2' }]}>
+                {`-₹${totalSpent.toLocaleString('en-IN')}`}
+              </Badge>
+            </View>
           </View>
-
           <View style={{ marginTop: 10 }}>
             <View style={styles.rowBetween}>
-              <Text style={styles.grayText}>Budget</Text>
-              <Text style={styles.blueText}>₹43,000</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.grayText}>Remaining</Text>
-              <Text style={styles.greenText}>₹8,630</Text>
+              <Text style={{ color: colors.textSecondary }}>Total Spent</Text>
+              <Text style={[styles.blueText, { color: colors.secondary }]}>₹{totalSpent.toLocaleString('en-IN')}</Text>
             </View>
           </View>
         </Card>
@@ -55,46 +200,51 @@ export function Expenses() {
 
       {/* Category Breakdown */}
       <View style={{ paddingHorizontal: 16 }}>
-        <Text style={styles.sectionTitle}>Category Breakdown</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Category Breakdown</Text>
 
         {categories.map((category, index) => {
-          const percentage = (category.spent / category.budget) * 100;
-          const isOver = percentage > 100;
+          const config = getCategoryConfig(category.name);
+          const IconComponent = config.icon;
 
           return (
-            <TouchableOpacity key={index} onPress={() =>
-              setSelectedCategory(selectedCategory === category.name ? null : category.name)
-            }>
+            <TouchableOpacity
+              key={index}
+              onPress={() => {
+                if (onNavigateToCategoryDetails) {
+                  onNavigateToCategoryDetails(category.name);
+                }
+              }}
+              activeOpacity={0.7}
+            >
               <Card
                 style={[
                   styles.categoryCard,
-                  selectedCategory === category.name && styles.categoryCardSelected,
+                  {
+                    backgroundColor: colors.cardBackground,
+                    borderColor: colors.cardBorder,
+                  },
                 ]}
               >
                 <View style={styles.row}>
-                  <View style={styles.iconCircle}>
-                    <Text style={{ fontSize: 20 }}>{category.icon}</Text>
+                  <View style={[styles.iconCircle, { backgroundColor: config.bgColor }]}>
+                    <IconComponent size={20} color={config.color} />
                   </View>
-
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.categoryName}>{category.name}</Text>
-                    <Text style={styles.categorySub}>
-                      ₹{category.spent.toLocaleString("en-IN")} / ₹
-                      {category.budget.toLocaleString("en-IN")}
+                    <Text style={[styles.categoryName, { color: colors.text }]}>{category.name}</Text>
+                    <Text style={[styles.categorySub, { color: colors.textSecondary }]}>
+                      ₹{category.spent.toLocaleString("en-IN")} • {category.count} txns
                     </Text>
                   </View>
-
-                  <Text style={{ color: isOver ? "red" : "#2e7d32" }}>
-                    {Math.round(percentage)}%
-                  </Text>
+                  <ChevronRight size={20} color={colors.textMuted} />
                 </View>
-
-                {/* Progress Bar */}
-                <View style={styles.progressBg}>
+                <View style={[styles.progressBg, { backgroundColor: colors.backgroundSecondary }]}>
                   <View
                     style={[
                       styles.progressFill,
-                      { width: `${Math.min(percentage, 100)}%`, backgroundColor: isOver ? "red" : "#2e7d32" },
+                      {
+                        width: `${Math.min((category.spent / totalSpent) * 100, 100)}%`,
+                        backgroundColor: config.color,
+                      },
                     ]}
                   />
                 </View>
@@ -107,65 +257,260 @@ export function Expenses() {
       {/* Transactions */}
       <View style={{ padding: 16 }}>
         <View style={styles.rowBetween}>
-          <Text style={styles.sectionTitle}>
-            {selectedCategory ? `${selectedCategory} Transactions` : "All Transactions"}
-          </Text>
-
-          {selectedCategory && (
-            <Button mode="text" textColor="#2e7d32" onPress={() => setSelectedCategory(null)}>
-              Clear
-            </Button>
-          )}
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
+              All Transactions
+            </Text>
+            <Text style={[styles.txCountText, { color: colors.textMuted }]}>
+              Showing {startIndex + 1}-{endIndex} of {totalTransactions} transaction{totalTransactions !== 1 ? 's' : ''}
+            </Text>
+          </View>
         </View>
 
-        <Card>
-          {filteredTransactions.map((t, i) => (
-            <View key={i} style={styles.transactionRow}>
-              <View style={styles.redCircle}>
-                <TrendingDown size={22} color="red" />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.txName}>{t.name}</Text>
-                <Text style={styles.txCategory}>{t.category} • {t.method}</Text>
-                <Text style={styles.txTime}>{t.time}</Text>
-              </View>
-
-              <Text style={styles.txAmount}>-₹{t.amount.toLocaleString("en-IN")}</Text>
-            </View>
+        {/* Page Size Selector */}
+        <View style={styles.pageSizeContainer}>
+          <Text style={[styles.pageSizeLabel, { color: colors.textSecondary }]}>Per page:</Text>
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <TouchableOpacity
+              key={size}
+              onPress={() => handlePageSizeChange(size)}
+              style={[
+                styles.pageSizeButton,
+                {
+                  backgroundColor: pageSize === size ? colors.secondary : 'transparent',
+                  borderColor: colors.secondary,
+                },
+              ]}
+            >
+              <Text style={{ color: pageSize === size ? '#fff' : colors.secondary, fontSize: 12 }}>
+                {size}
+              </Text>
+            </TouchableOpacity>
           ))}
+        </View>
+
+        <Card style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder }]}>
+          {paginatedTransactions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                No transactions found.
+              </Text>
+            </View>
+          ) : (
+            <>
+              {paginatedTransactions.map((t) => (
+                <View key={t.id} style={[styles.transactionRow, { borderColor: colors.border }]}>
+                  <View
+                    style={[
+                      styles.txIconCircle,
+                      { backgroundColor: t.direction === 'DEBIT' ? (isDark ? 'rgba(248,113,113,0.2)' : '#fee2e2') : (isDark ? 'rgba(74,222,128,0.2)' : '#dcfce7') },
+                    ]}
+                  >
+                    {t.direction === 'DEBIT' ? (
+                      <TrendingDown size={20} color={colors.error} />
+                    ) : (
+                      <TrendingUp size={20} color={colors.success} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.txName, { color: colors.text }]}>
+                      {t.merchant || t.description.substring(0, 30)}
+                    </Text>
+                    <Text style={[styles.txCategory, { color: colors.textSecondary }]}>
+                      {t.category} • {t.txnType}
+                    </Text>
+                    <Text style={[styles.txTime, { color: colors.textMuted }]}>
+                      {new Date(t.txnDate).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  <Text style={[styles.txAmount, { color: t.direction === 'DEBIT' ? colors.error : colors.success }]}>
+                    {t.direction === 'DEBIT' ? '-' : '+'}₹{formatRupees(t.amount)}
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
         </Card>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <View style={styles.paginationContainer}>
+            {/* Previous Button */}
+            <TouchableOpacity
+              onPress={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 0}
+              style={[
+                styles.paginationButton,
+                {
+                  borderColor: colors.border,
+                  opacity: currentPage === 0 ? 0.4 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: colors.text }}>←</Text>
+            </TouchableOpacity>
+
+            {/* Page Numbers */}
+            {getPageNumbers().map((pageNum, index) => (
+              typeof pageNum === 'string' ? (
+                <Text key={`ellipsis-${index}`} style={[styles.paginationEllipsis, { color: colors.textMuted }]}>
+                  {pageNum}
+                </Text>
+              ) : (
+                <TouchableOpacity
+                  key={pageNum}
+                  onPress={() => handlePageChange(pageNum)}
+                  style={[
+                    styles.paginationButton,
+                    {
+                      backgroundColor: currentPage === pageNum ? colors.secondary : 'transparent',
+                      borderColor: currentPage === pageNum ? colors.secondary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: currentPage === pageNum ? '#fff' : colors.text, fontSize: 12 }}>
+                    {pageNum + 1}
+                  </Text>
+                </TouchableOpacity>
+              )
+            ))}
+
+            {/* Next Button */}
+            <TouchableOpacity
+              onPress={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages - 1}
+              style={[
+                styles.paginationButton,
+                {
+                  borderColor: colors.border,
+                  opacity: currentPage === totalPages - 1 ? 0.4 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: colors.text }}>→</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  monthTitle: { fontSize: 16, color: "#034a67", fontWeight: "600" },
-  redBadge: { backgroundColor: "#ffdddd", color: "#c00", paddingHorizontal: 6 },
-  grayText: { color: "#666" },
-  blueText: { color: "#034a67", fontWeight: "600" },
-  greenText: { color: "#2e7d32", fontWeight: "600" },
-  sectionTitle: { marginVertical: 10, fontSize: 16, color: "#034a67", fontWeight: "600" },
-  categoryCard: { padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#ddd" },
-  categoryCardSelected: { borderColor: "#2e7d32", backgroundColor: "#eaf5ec" },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: 14,
+  },
+  errorText: {
+    fontSize: 14,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  card: {
+    padding: 16,
+    borderWidth: 1,
+  },
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  refreshButton: {
+    padding: 8,
+  },
+  monthTitle: { fontSize: 16, fontWeight: "600" },
+  redBadge: { paddingHorizontal: 6 },
+  txCountText: { fontSize: 12, marginTop: 2 },
+  blueText: { fontWeight: "600" },
+  sectionTitle: { marginVertical: 10, fontSize: 16, fontWeight: "600" },
+  categoryCard: {
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+  },
   row: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
   iconCircle: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: "#f2f2f2",
-    alignItems: "center", justifyContent: "center", marginRight: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
   },
-  categoryName: { fontSize: 14, color: "#034a67" },
-  categorySub: { fontSize: 12, color: "#666" },
-  progressBg: { width: "100%", height: 8, backgroundColor: "#eee", borderRadius: 8 },
+  categoryName: { fontSize: 14 },
+  categorySub: { fontSize: 12 },
+  progressBg: { width: "100%", height: 8, borderRadius: 8 },
   progressFill: { height: 8, borderRadius: 8 },
-  transactionRow: { flexDirection: "row", padding: 12, borderBottomWidth: 1, borderColor: "#eee" },
-  redCircle: {
-    width: 40, height: 40, backgroundColor: "#ffe5e5",
-    borderRadius: 20, alignItems: "center", justifyContent: "center", marginRight: 10,
+  transactionRow: {
+    flexDirection: "row",
+    padding: 12,
+    borderBottomWidth: 1,
   },
-  txName: { fontSize: 14, color: "#034a67" },
-  txCategory: { fontSize: 12, color: "#666" },
-  txTime: { fontSize: 11, color: "#999" },
-  txAmount: { fontSize: 14, color: "red", fontWeight: "600" },
+  txIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  txName: { fontSize: 14 },
+  txCategory: { fontSize: 12 },
+  txTime: { fontSize: 11 },
+  txAmount: { fontSize: 14, fontWeight: "600" },
+  emptyState: {
+    padding: 20,
+    alignItems: "center",
+  },
+  emptyStateText: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  pageSizeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 8,
+  },
+  pageSizeLabel: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  pageSizeButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  paginationContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 16,
+    gap: 6,
+  },
+  paginationButton: {
+    width: 32,
+    height: 32,
+    borderWidth: 1,
+    borderRadius: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  paginationEllipsis: {
+    paddingHorizontal: 4,
+    fontSize: 12,
+  },
 });

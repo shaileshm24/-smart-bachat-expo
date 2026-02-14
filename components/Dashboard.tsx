@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, FlatList, ScrollView, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native";
 import { Zap, Wallet, Target, TrendingUp, TrendingDown, Filter } from "lucide-react-native";
 import { aiApi, DashboardResponse, DashboardTransaction, bankApi } from "../services/api";
+import { useTheme } from "../contexts/ThemeContext";
 
 // Temporary Icon component to replace react-native-vector-icons
 const Icon = ({ name, size, color }: { name: string; size: number; color: string }) => {
@@ -48,32 +49,58 @@ const formatDate = (dateStr: string): string => {
   }
 };
 
+// Cache dashboard data to prevent refetching on tab switches
+let cachedDashboardData: DashboardResponse | null = null;
+let lastFetchTime: number = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
+
 export function Dashboard() {
-  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(cachedDashboardData);
+  const [loading, setLoading] = useState(!cachedDashboardData);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { colors, isDark } = useTheme();
+  const hasFetched = useRef(false);
 
   // Transaction filtering state
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    fetchDashboardData();
+    const now = Date.now();
+    const isCacheValid = cachedDashboardData && (now - lastFetchTime) < CACHE_DURATION;
+
+    // Only fetch if we don't have cached data or cache is expired
+    if (!isCacheValid && !hasFetched.current) {
+      hasFetched.current = true;
+      fetchDashboardData();
+    }
   }, []);
 
   const fetchDashboardData = async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
-      } else {
+      } else if (!cachedDashboardData) {
         setLoading(true);
       }
       setError(null);
       const data = await bankApi.getDashboard();
+
+      console.log("Dashboard data", data);
+      
+      // Update cache
+      cachedDashboardData = data;
+      lastFetchTime = Date.now();
+
       setDashboardData(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load dashboard data');
+	    } catch (err: any) {
+	      // Don't show error if session expired - app will redirect to login
+	      if (err?.sessionExpired) {
+	        // Session expiration is handled globally via Redux/App state changes
+	        return;
+	      }
+	      setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -81,6 +108,8 @@ export function Dashboard() {
   };
 
   const onRefresh = () => {
+    // Force refresh - reset the fetch flag and fetch new data
+    hasFetched.current = false;
     fetchDashboardData(true);
   };
 
@@ -109,19 +138,19 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#034a67" />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.secondary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading dashboard...</Text>
       </View>
     );
   }
 
   if (error || !dashboardData) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <Text style={styles.errorText}>⚠️ {error || 'Failed to load dashboard'}</Text>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorText, { color: colors.error }]}>⚠️ {error || 'Failed to load dashboard'}</Text>
         <TouchableOpacity onPress={() => fetchDashboardData()}>
-          <Text style={styles.retryText}>Tap to retry</Text>
+          <Text style={[styles.retryText, { color: colors.primary }]}>Tap to retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -136,107 +165,107 @@ export function Dashboard() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={['#034a67']}
-          tintColor="#034a67"
+          colors={[colors.secondary]}
+          tintColor={colors.secondary}
         />
       }
     >
 
       {/* AI Smart Nudge */}
-      <View style={styles.nudgeBox}>
-        <Icon name="zap" size={20} color="#034a67" />
-        <Text style={styles.nudgeText}>
+      <View style={[styles.nudgeBox, { backgroundColor: isDark ? 'rgba(255,213,79,0.15)' : '#fffbe6', borderColor: isDark ? 'rgba(255,213,79,0.3)' : '#ffe58f' }]}>
+        <Icon name="zap" size={20} color={colors.gold} />
+        <Text style={[styles.nudgeText, { color: colors.text }]}>
           <Text style={{ fontWeight: "bold" }}>{dashboardData.nudge.title}</Text> {dashboardData.nudge.message}
         </Text>
       </View>
 
       {/* Balance Card */}
-      <View style={styles.balanceCard}>
+      <View style={[styles.balanceCard, { backgroundColor: '#034a67' }]}>
         <View>
-          <Text style={styles.label}>Current Balance</Text>
-          <Text style={styles.balance}>₹{dashboardData.balance.totalBalance.toLocaleString("en-IN")}</Text>
-          <Text style={styles.subLabel}>{dashboardData.balance.accountCount} accounts • Last synced: {new Date(dashboardData.balance.lastSyncedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</Text>
+          <Text style={[styles.label, { color: 'rgba(255,255,255,0.8)' }]}>Current Balance</Text>
+          <Text style={[styles.balance, { color: '#fff' }]}>₹{dashboardData.balance.totalBalance.toLocaleString("en-IN")}</Text>
+          <Text style={[styles.subLabel, { color: 'rgba(255,255,255,0.7)' }]}>{dashboardData.balance.accountCount} accounts • Last synced: {new Date(dashboardData.balance.lastSyncedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</Text>
         </View>
         <Icon name="wallet" size={36} color="#ffffffaa" />
       </View>
 
       {/* Savings Goal */}
-      <View style={styles.goalCard}>
+      <View style={[styles.goalCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
         <View style={styles.goalHeader}>
-          <Icon name="target" size={20} color="#2e7d32" />
-          <Text style={styles.goalTitle}>Monthly Savings Goal</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{Math.round(savingsProgress)}%</Text>
+          <Icon name="target" size={20} color={colors.primary} />
+          <Text style={[styles.goalTitle, { color: colors.text }]}>Monthly Savings Goal</Text>
+          <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.badgeText, { color: colors.textInverse }]}>{Math.round(savingsProgress)}%</Text>
           </View>
         </View>
 
         {/* Progress Bar */}
-        <View style={styles.progressBackground}>
+        <View style={[styles.progressBackground, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]}>
           <View
             style={[
               styles.progressFill,
-              { width: `${savingsProgress}%` },
+              { width: `${savingsProgress}%`, backgroundColor: colors.primary },
             ]}
           />
         </View>
 
         <View style={styles.goalFooter}>
-          <Text style={styles.grayText}>₹{dashboardData.savingsGoal.totalSaved.toLocaleString("en-IN")} saved</Text>
-          <Text style={styles.greenText}>₹{dashboardData.savingsGoal.totalTarget.toLocaleString("en-IN")} goal</Text>
+          <Text style={[styles.grayText, { color: colors.textMuted }]}>₹{dashboardData.savingsGoal.totalSaved.toLocaleString("en-IN")} saved</Text>
+          <Text style={[styles.greenText, { color: colors.primary }]}>₹{dashboardData.savingsGoal.totalTarget.toLocaleString("en-IN")} goal</Text>
         </View>
       </View>
 
       {/* Gamification Boxes */}
       <View style={styles.gamificationRow}>
-        <View style={styles.gamificationCard}>
+        <View style={[styles.gamificationCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
           <Text style={styles.emoji}>🔥</Text>
-          <Text style={styles.gamificationValue}>{dashboardData.gamification.currentStreak}</Text>
-          <Text style={styles.gamificationLabel}>Day Streak</Text>
+          <Text style={[styles.gamificationValue, { color: colors.text }]}>{dashboardData.gamification.currentStreak}</Text>
+          <Text style={[styles.gamificationLabel, { color: colors.textMuted }]}>Day Streak</Text>
         </View>
 
-        <View style={styles.gamificationCard}>
+        <View style={[styles.gamificationCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
           <Text style={styles.emoji}>🏆</Text>
-          <Text style={styles.gamificationValue}>{dashboardData.gamification.totalBadges}</Text>
-          <Text style={styles.gamificationLabel}>Badges</Text>
+          <Text style={[styles.gamificationValue, { color: colors.text }]}>{dashboardData.gamification.totalBadges}</Text>
+          <Text style={[styles.gamificationLabel, { color: colors.textMuted }]}>Badges</Text>
         </View>
 
-        <View style={styles.gamificationCard}>
+        <View style={[styles.gamificationCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
           <Text style={styles.emoji}>⭐</Text>
-          <Text style={styles.gamificationValue}>{dashboardData.gamification.activeChallenges.length}</Text>
-          <Text style={styles.gamificationLabel}>Challenges</Text>
+          <Text style={[styles.gamificationValue, { color: colors.text }]}>{dashboardData.gamification.activeChallenges.length}</Text>
+          <Text style={[styles.gamificationLabel, { color: colors.textMuted }]}>Challenges</Text>
         </View>
       </View>
 
       {/* Forecast */}
-      <Text style={styles.sectionTitle}>This Month's Forecast</Text>
-      <View style={styles.forecastCard}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>This Month's Forecast</Text>
+      <View style={[styles.forecastCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
 
         <View style={styles.forecastRow}>
           <View style={styles.rowLeft}>
-            <Icon name="trending-up" size={18} color="green" />
-            <Text style={styles.rowLabel}>Expected Income</Text>
+            <Icon name="trending-up" size={18} color={colors.success} />
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Expected Income</Text>
           </View>
-          <Text style={styles.greenText}>+₹{dashboardData.forecast.projected_income.toLocaleString("en-IN")}</Text>
+          <Text style={[styles.greenText, { color: colors.success }]}>+₹{dashboardData.forecast.projected_income.toLocaleString("en-IN")}</Text>
         </View>
 
         <View style={styles.forecastRow}>
           <View style={styles.rowLeft}>
-            <Icon name="trending-down" size={18} color="red" />
-            <Text style={styles.rowLabel}>Predicted Expenses</Text>
+            <Icon name="trending-down" size={18} color={colors.error} />
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Predicted Expenses</Text>
           </View>
-          <Text style={styles.redText}>-₹{dashboardData.forecast.projected_expense.toLocaleString("en-IN")}</Text>
+          <Text style={[styles.redText, { color: colors.error }]}>-₹{dashboardData.forecast.projected_expense.toLocaleString("en-IN")}</Text>
         </View>
 
-        <View style={styles.divider} />
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
         <View style={styles.forecastRow}>
-          <Text style={styles.rowLabel}>Net Savings</Text>
-          <Text style={dashboardData.forecast.projected_savings >= 0 ? styles.greenText : styles.redText}>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>Net Savings</Text>
+          <Text style={{ color: dashboardData.forecast.projected_savings >= 0 ? colors.success : colors.error, fontWeight: '600' }}>
             {dashboardData.forecast.projected_savings >= 0 ? '+' : ''}₹{dashboardData.forecast.projected_savings.toLocaleString("en-IN")}
           </Text>
         </View>
@@ -245,7 +274,7 @@ export function Dashboard() {
         {dashboardData.forecast.insights.length > 0 && (
           <View style={{ marginTop: 12 }}>
             {dashboardData.forecast.insights.map((insight, index) => (
-              <Text key={index} style={styles.insightText}>• {insight}</Text>
+              <Text key={index} style={[styles.insightText, { color: colors.textSecondary }]}>• {insight}</Text>
             ))}
           </View>
         )}
@@ -255,11 +284,11 @@ export function Dashboard() {
       {/* Alerts */}
       {dashboardData.alerts.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>Alerts & Reminders</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Alerts & Reminders</Text>
           {dashboardData.alerts.map((alert: any, index: number) => (
-            <View key={index} style={styles.alertCardOrange}>
-              <Icon name="alert-circle" size={18} color="#d35400" />
-              <Text style={styles.alertText}>{alert.message}</Text>
+            <View key={index} style={[styles.alertCardOrange, { backgroundColor: isDark ? 'rgba(211,84,0,0.15)' : '#fff3e0', borderColor: isDark ? 'rgba(211,84,0,0.3)' : '#ffcc80' }]}>
+              <Icon name="alert-circle" size={18} color={colors.warning} />
+              <Text style={[styles.alertText, { color: colors.text }]}>{alert.message}</Text>
             </View>
           ))}
         </>
@@ -267,13 +296,13 @@ export function Dashboard() {
 
       {/* Recent Transactions */}
       <View style={styles.transactionHeader}>
-        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Transactions</Text>
         <TouchableOpacity
-          style={styles.filterButton}
+          style={[styles.filterButton, { backgroundColor: isDark ? 'rgba(91,163,192,0.15)' : 'rgba(3,74,103,0.1)' }]}
           onPress={() => setShowFilters(!showFilters)}
         >
-          <Filter size={18} color="#034a67" />
-          <Text style={styles.filterButtonText}>Filter</Text>
+          <Filter size={18} color={colors.secondary} />
+          <Text style={[styles.filterButtonText, { color: colors.secondary }]}>Filter</Text>
         </TouchableOpacity>
       </View>
 
@@ -288,13 +317,15 @@ export function Dashboard() {
           <TouchableOpacity
             style={[
               styles.filterChip,
-              !selectedCategory && styles.filterChipActive
+              { backgroundColor: colors.cardBackground, borderColor: colors.border },
+              !selectedCategory && { backgroundColor: colors.secondary, borderColor: colors.secondary }
             ]}
             onPress={() => setSelectedCategory(null)}
           >
             <Text style={[
               styles.filterChipText,
-              !selectedCategory && styles.filterChipTextActive
+              { color: colors.text },
+              !selectedCategory && { color: colors.textInverse }
             ]}>
               All
             </Text>
@@ -305,14 +336,16 @@ export function Dashboard() {
               key={category}
               style={[
                 styles.filterChip,
-                selectedCategory === category && styles.filterChipActive
+                { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                selectedCategory === category && { backgroundColor: colors.secondary, borderColor: colors.secondary }
               ]}
               onPress={() => setSelectedCategory(category)}
             >
               <Text style={styles.filterChipIcon}>{getCategoryIcon(category)}</Text>
               <Text style={[
                 styles.filterChipText,
-                selectedCategory === category && styles.filterChipTextActive
+                { color: colors.text },
+                selectedCategory === category && { color: colors.textInverse }
               ]}>
                 {category}
               </Text>
@@ -322,22 +355,22 @@ export function Dashboard() {
       )}
 
       {/* Transactions List */}
-      <View style={styles.transactionsCard}>
+      <View style={[styles.transactionsCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
         {filteredTransactions.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateIcon}>📭</Text>
-            <Text style={styles.emptyStateTitle}>No Transactions Found</Text>
-            <Text style={styles.emptyStateText}>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>No Transactions Found</Text>
+            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
               {selectedCategory
                 ? `No transactions in ${selectedCategory} category`
                 : 'Connect your bank account to see transactions'}
             </Text>
             {selectedCategory && (
               <TouchableOpacity
-                style={styles.clearFilterButton}
+                style={[styles.clearFilterButton, { backgroundColor: colors.secondary }]}
                 onPress={() => setSelectedCategory(null)}
               >
-                <Text style={styles.clearFilterText}>Clear Filter</Text>
+                <Text style={[styles.clearFilterText, { color: colors.textInverse }]}>Clear Filter</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -346,14 +379,14 @@ export function Dashboard() {
             data={filteredTransactions}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <View style={styles.transactionRow}>
-                <View style={styles.txIcon}>
+              <View style={[styles.transactionRow, { borderBottomColor: colors.border }]}>
+                <View style={[styles.txIcon, { backgroundColor: colors.backgroundSecondary }]}>
                   <Text style={{ fontSize: 18 }}>{getCategoryIcon(item.category)}</Text>
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.txName}>{item.merchant || item.description.substring(0, 30)}</Text>
-                  <Text style={styles.txMeta}>
+                  <Text style={[styles.txName, { color: colors.text }]}>{item.merchant || item.description.substring(0, 30)}</Text>
+                  <Text style={[styles.txMeta, { color: colors.textMuted }]}>
                     {item.category} • {formatDate(item.txnDate)}
                   </Text>
                 </View>
@@ -361,7 +394,7 @@ export function Dashboard() {
                 <Text
                   style={[
                     styles.txAmount,
-                    { color: item.direction === 'CREDIT' ? "green" : "#034a67" },
+                    { color: item.direction === 'CREDIT' ? colors.success : colors.secondary },
                   ]}
                 >
                   {item.direction === 'CREDIT' ? "+" : "-"}₹{item.amount.toLocaleString("en-IN")}

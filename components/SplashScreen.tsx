@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, Animated, Easing } from "react-native";
-import { Sparkles } from "lucide-react-native";
+import { Logo } from "./Logo";
 
 export function SplashScreen() {
   // Spin animation for orbiting circle
@@ -51,18 +51,13 @@ export function SplashScreen() {
     <View style={styles.container}>
       {/* Logo */}
       <View style={styles.logoContainer}>
-        <View style={styles.outerCircle}>
-          <View style={styles.innerCircle}>
-            <Sparkles color="#034a67" size={32} />
-          </View>
-        </View>
-
+        <Logo size={96} variant="splash" />
         <Animated.View style={[styles.orbitCircle, { transform: [{ rotate: spin }] }]} />
       </View>
 
       {/* App Name */}
       <View style={styles.textContainer}>
-        <Text style={styles.title}>SmartBachat</Text>
+        <Text style={styles.title}>Smart Bachat</Text>
         <Text style={styles.subtitle}>Your Trusted Savings Partner</Text>
       </View>
 
@@ -101,27 +96,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     justifyContent: "center",
     alignItems: "center",
-  },
-  outerCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  innerCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#f1c40f",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 5,
   },
   orbitCircle: {
     position: "absolute",

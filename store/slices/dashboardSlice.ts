@@ -29,6 +29,7 @@ export const fetchDashboard = createAsyncThunk(
   async (isRefresh: boolean = false, { rejectWithValue }) => {
     try {
       const data = await bankApi.getDashboard();
+      console.log("Dashboard data", data, "isRefresh", isRefresh);
       return { data, isRefresh };
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to load dashboard data');

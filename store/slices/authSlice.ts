@@ -36,6 +36,7 @@ export const login = createAsyncThunk(
   async (credentials: LoginRequest, { rejectWithValue }) => {
     try {
       const response = await authApi.login(credentials);
+      console.log("Login response", response);
       return response;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Login failed');
@@ -77,6 +78,14 @@ const authSlice = createSlice({
     setTokens: (state, action: PayloadAction<AuthState['tokens']>) => {
       state.tokens = action.payload;
       state.isAuthenticated = !!action.payload;
+    },
+    // Force logout when token refresh fails - clears all auth state
+    forceLogout: (state) => {
+      state.user = null;
+      state.tokens = null;
+      state.isAuthenticated = false;
+      state.loading = false;
+      state.error = 'Session expired. Please login again.';
     },
   },
   extraReducers: (builder) => {
@@ -152,6 +161,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setTokens } = authSlice.actions;
+export const { clearError, setTokens, forceLogout } = authSlice.actions;
 export default authSlice.reducer;
 

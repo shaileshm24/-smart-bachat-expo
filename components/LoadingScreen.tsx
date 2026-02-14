@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Easing } from "react-native";
-import { Loader2, Sparkles } from "lucide-react-native";
+import { Loader2 } from "lucide-react-native";
+import { Logo } from "./Logo";
 
 interface LoadingScreenProps {
   message?: string;
@@ -56,8 +57,8 @@ export  function LoadingScreen({ message = "Loading...", fullScreen = true }: Lo
   return (
     <View style={styles.fullScreen}>
       {/* Logo */}
-      <View style={styles.logoContainer}>
-        <Sparkles size={40} color="#fff" />
+      <View style={{ marginBottom: 24 }}>
+        <Logo size={80} variant="default" />
       </View>
 
       {/* Spinner */}
@@ -90,20 +91,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: 48,
-  },
-  logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#2e7d32",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
   spinner: {
     width: 48,
